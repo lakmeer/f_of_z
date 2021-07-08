@@ -1,0 +1,246 @@
+<!doctype html>
+<html>
+  <head>
+    <title>f(z)</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="config/mathjax.js"></script>
+    <script src="lib/mathjax.js"></script>
+    <script src="lib/three.min.js"></script>
+    <script src="lib/OrbitControls.js"></script>
+    <script src="lib/dat.gui.js"></script>
+    <script src="src/constants.js"></script>
+    <script src="src/utils.js"></script>
+    <script src="src/math.js"></script>
+    <script src="src/functions.js"></script>
+    <script src="src/axes.js"></script>
+    <script src="src/stage.js"></script>
+    <script src="src/branch.js"></script>
+    <script src="src/surface.js"></script>
+  </head>
+  <body>
+    <div class="functionDisplay"></div>
+
+    <script>
+
+    // Engine Config
+
+    let ENABLE_LOOKING_GLASS = false;
+    
+    let domain      = [ -5, 5, -5, 5 ]; // xmin, xmax, ymin, ymax
+    let range       = [ domain[1] - domain[0], domain[3] - domain[2] ]; // xrange, yrange
+    let resolution  = 64; // subdivision of the range, also texture for chroma data
+    
+
+    // State
+
+    window.mouse = { x: 0, y: 0 };
+    
+    let stopped = false;
+    let width  = window.innerWidth;
+    let height = window.innerHeight;
+    
+    let state  = {
+      fn: id,
+      zScale: 0,
+      values: [],
+      staleValues: [],
+      targetValues: [],
+      tweenTimer: 0,
+      currentFunctionIx: 0,
+      surfaceType: SURFACE_TYPE_SQUARE,
+      chromaMode: CHROMA_MODE_OUTPUT_PHASE,
+    };
+
+    
+    // Dom Selection
+    
+    let dom = {
+      functionDisplay: document.querySelector('.functionDisplay')
+    };
+
+    
+    // Renderer Setup
+
+    let renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, physicallyCorrectLights: true });
+    let camera   = new THREE.PerspectiveCamera(45, width/height, 0.1, 400);
+    let scene 	 = new THREE.Scene();
+    let clock    = new THREE.Clock();
+    let controls = new THREE.OrbitControls(camera, renderer.domElement);
+    //var holo     = new HoloPlay(scene, camera, renderer, [ 0, 0, 0 ], true, false);
+    
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.setSize(width, height);
+    renderer.setClearColor(new THREE.Color(110/255, 119/255, 127/255), 1);
+
+    camera.position.y = 10;
+    camera.position.z = 18;
+
+    controls.target.set(0, 4.5, 0);
+    controls.enableKeys = false;
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = PI*2/3;
+    controls.update();
+
+    document.body.appendChild(renderer.domElement);
+    //document.body.appendChild(chromacanvas);
+    
+    
+    // Scene Setup
+    let stage   = new Stage(200, scene);
+    let axes    = new Axes(range[0], scene);
+    let surface = new Surface(resolution, state.surfaceType, state.chromaMode, scene); 
+ 
+    
+    // Function Selection
+    
+    function typesetExpression (tex) {
+      MathJax.startup.output.clearCache();
+      let chtml = MathJax.tex2chtml(tex, { display: false });
+      chtml.appendChild(MathJax.chtmlStylesheet());
+      return chtml;
+    }
+    
+    function nextFunction () {
+      selectFunction((state.currentFunctionIx + functions.length - 1) % functions.length);
+    }
+    
+    function prevFunction () {
+      selectFunction((state.currentFunctionIx + 1) % functions.length);
+    }
+    
+    function selectFunction (ix) {
+      state.currentFunctionIx = (functions.length + ix) % functions.length;
+      surface.setFunction(functions[state.currentFunctionIx].fn);
+      if (config.autoScale) config.zScale = functions[ix].zScale;
+      dom.functionDisplay.innerHTML = "";
+      dom.functionDisplay.appendChild(typesetExpression(functions[ix].tex));
+    }
+    
+    
+    // Main Loop
+
+    function update (dt, time) {
+      axes.update(dt);
+      surface.update(dt, t);
+    }
+
+
+    // Config UI
+
+    let config = {
+      autoScale: true,
+      useGround: true,
+      useSignMag: false,
+      fnLerpSpeed: 0.3,
+      opacity: 1,
+      zScale: 1,
+      valueA: 1,
+      valueB: 1,
+      valueC: 1,
+    };
+
+    function initConfig () {
+      let gui = new dat.GUI();
+      gui.add(config, 'autoScale').name("Auto-Rescale");
+      gui.add(config, 'zScale', 0, 2).name('Vertical Scale').step(0.01).onChange(axes.setVerticalScale.bind(axes));
+      gui.add(config, 'useGround').name('Ground Plane').onChange(stage.setGroundVisibility.bind(stage));
+      gui.add(config, 'fnLerpSpeed', 0.01, 1).name('Transition Speed');
+      gui.add(config, 'valueA', 0, 10).name('Alpha').onChange(surface.updateParams.bind(surface));
+      //gui.add(config, 'valueB', 0, 10).name('Beta').onChange(calcValues);
+      //gui.add(config, 'valueC', 0, 10).name('Gamma').onChange(calcValues);
+      gui.add(config, 'opacity', 0, 1).name('Surface Opacity').onChange(surface.setOpacity.bind(surface));
+      gui.add(state, 'chromaMode', {
+        'Debug':        CHROMA_MODE_DEBUG, 
+        'Zeroes':       CHROMA_MODE_ZEROES,
+        'Output Phase': CHROMA_MODE_OUTPUT_PHASE, 
+      }).name('Chroma Mode').onChange((v) => state.chromaMode = parseInt(v));
+      gui.add(state, 'surfaceType', {
+        'Square': SURFACE_TYPE_SQUARE, 
+        'Circle': SURFACE_TYPE_CIRCLE,
+      }).name('Surface Type').onChange((v) => surface.setType(parseInt(v)));
+    }
+    
+
+    // Event handlers
+
+    document.addEventListener('keydown', whichKey(192, function () {
+      ENABLE_LOOKING_GLASS = !ENABLE_LOOKING_GLASS;
+    }));
+
+    document.addEventListener('keydown', whichKey(27,  function () {
+      stopped = !stopped;
+      clock.getDelta();
+      if (!stopped) gameLoop();
+    }));
+
+    document.addEventListener('keydown', whichKey(40, surface.nextBranch.bind(surface)));
+    document.addEventListener('keydown', whichKey(38, surface.prevBranch.bind(surface)));
+    document.addEventListener('keydown', whichKey(37, nextFunction));
+    document.addEventListener('keydown', whichKey(39, prevFunction));
+    document.addEventListener('keydown', whichKey(32, surface.showChromaSwatches.bind(surface)));
+    document.addEventListener('keyup',   whichKey(32, surface.hideChromaSwatches.bind(surface)));
+
+    document.addEventListener('mousemove', function (event) {
+      var x = -1 + event.clientX/width  * 2;
+      var y = -1 + event.clientY/height * 2;
+      window.mouse = { x, y };
+      //console.log(window.mouse);
+    });
+
+    document.addEventListener('buttonDown', function (event) {
+      switch (event.name) {
+        default: 
+          console.log("Button:", event.name);
+      }
+    });
+
+    document.addEventListener('buttonPressed', function (event) {
+      log("LookingGlass Button:", event.name);
+    });
+    
+    window.addEventListener('resize', resize);
+    
+    
+    // Render Loop
+
+    var t = 0;
+    var dt = 0;
+
+    function gameLoop () {
+      if (!stopped) requestAnimationFrame(gameLoop);
+      dt = clock.getDelta();
+      t += dt;
+
+      controls.update();
+      update(dt, t);
+      
+      if (ENABLE_LOOKING_GLASS) {
+        holo.render();
+      } else {
+        renderer.render(scene, camera);
+      }
+	  }
+
+    
+    // Start
+
+    selectFunction(1);
+    initConfig();
+    //holo.reapplyCalibration();
+    gameLoop();
+    
+  
+    // Helper Functions
+    
+    function resize () {
+      width  = window.innerWidth;
+      height = window.innerHeight;
+      renderer.setSize(width, height);
+      camera.aspect = width/height;
+      camera.updateProjectionMatrix();
+    }
+    
+    </script>
+  </body>
+</html>

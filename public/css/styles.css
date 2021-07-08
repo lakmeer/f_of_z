@@ -1,0 +1,65 @@
+
+html, body {
+  padding: 0;
+  margin: 0;
+  background: #eeedec;
+} 
+
+
+canvas {
+  display: block;
+  box-shadow: 0 19px 38px rgba(0,0,0,0.30), 0 15px 12px rgba(0,0,0,0.22);
+}
+
+
+canvas.chroma {
+  display: block;
+  background: white;
+  image-rendering: pixelated;
+}
+
+.multicanvas {
+  display: none;
+  position: fixed;
+  justify-content: space-around;
+  align-items: center;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+}
+
+@media (orientation: portrait)  { canvas.chroma { width: 90vw; height: 90vw; }}
+@media (orientation: landscape) { canvas.chroma { width: 90vh; height: 90vh; }}
+
+
+/*
+ * MathJax Stuff
+ *
+ */
+ 
+.functionDisplay {
+  position: absolute;
+  display: flex;
+  left: 0;
+  bottom: 3vw;
+  width: 100%;
+  z-index: 2;
+  font-size: 5vw;
+  color: white;
+  text-shadow: 0 4px 8px #001122, 0 2px 3px #002244, 0 1px 1px #002244;
+  touch-events: none;
+}
+
+.functionDisplay mjx-container {
+  margin: 0 auto;
+}
+
+.functionDisplay mjx-line {
+  box-shadow: 0 4px 8px #001122, 0 2px 3px #002244, 0 1px 1px #002244;
+}
+
+.functionDisplay mjx-sqrt > mjx-box {
+  box-shadow: 0 5px 5px -4px #001122 inset, 0px -4px 5px -4px #002244;
+}
